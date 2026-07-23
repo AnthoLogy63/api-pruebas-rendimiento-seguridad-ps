@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+venv/
+.venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# Base de datos local
+biblioteca.db
+*.db
+
+# Resultados de pruebas
+tests/k6/results/
+tests/jmeter/results/
+*.jtl
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Entorno
+.env
+.env.local

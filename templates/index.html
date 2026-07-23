@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Biblioteca Nova — Sistema de Gestión</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <div class="bg-pattern"></div>
+
+  <header class="header">
+    <div class="header-inner">
+      <div class="brand">
+        <div class="brand-icon">&#128218;</div>
+        <div>
+          <h1>Biblioteca Nova</h1>
+          <p class="tagline">Donde cada página abre un universo</p>
+        </div>
+      </div>
+      <nav class="nav">
+        <button class="nav-btn active" data-section="dashboard">Inicio</button>
+        <button class="nav-btn" data-section="catalogo">Catálogo</button>
+        <button class="nav-btn" data-section="prestamos">Préstamos</button>
+      </nav>
+      <div class="header-status" id="apiStatus">
+        <span class="status-dot"></span>
+        <span>Conectando...</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="main">
+    <!-- Dashboard -->
+    <section id="dashboard" class="section active">
+      <div class="hero">
+        <h2>Bienvenido a Biblioteca Nova</h2>
+        <p>Gestiona el catálogo, préstamos y consulta estadísticas en tiempo real.</p>
+      </div>
+      <div class="stats-grid" id="statsGrid">
+        <div class="stat-card">
+          <span class="stat-label">Libros en catálogo</span>
+          <span class="stat-value" id="statLibros">—</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Ejemplares disponibles</span>
+          <span class="stat-value" id="statDisponibles">—</span>
+        </div>
+        <div class="stat-card accent">
+          <span class="stat-label">Préstamos activos</span>
+          <span class="stat-value" id="statActivos">—</span>
+        </div>
+        <div class="stat-card warn">
+          <span class="stat-label">Préstamos vencidos</span>
+          <span class="stat-value" id="statVencidos">—</span>
+        </div>
+      </div>
+      <div class="panel">
+        <h3>Libros por categoría</h3>
+        <div id="categoriasChart" class="category-bars"></div>
+      </div>
+    </section>
+
+    <!-- Catálogo -->
+    <section id="catalogo" class="section">
+      <div class="section-header">
+        <h2>Catálogo de libros</h2>
+        <div class="actions">
+          <input type="search" id="searchInput" placeholder="Buscar por título, autor o categoría..." class="search-input">
+          <button class="btn btn-primary" id="btnNuevoLibro">+ Nuevo libro</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Título</th>
+              <th>Autor</th>
+              <th>ISBN</th>
+              <th>Categoría</th>
+              <th>Año</th>
+              <th>Disponibles</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="librosTable"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Préstamos -->
+    <section id="prestamos" class="section">
+      <div class="section-header">
+        <h2>Gestión de préstamos</h2>
+        <div class="actions">
+          <button class="btn btn-secondary" id="btnVerTodos">Ver todos</button>
+          <button class="btn btn-primary" id="btnNuevoPrestamo">+ Nuevo préstamo</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Libro</th>
+              <th>Usuario</th>
+              <th>Email</th>
+              <th>Prestado</th>
+              <th>Devolución</th>
+              <th>Estado</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="prestamosTable"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <p>Biblioteca Nova &copy; 2026 — API REST para pruebas de rendimiento y seguridad</p>
+  </footer>
+
+  <!-- Modal Libro -->
+  <dialog id="modalLibro" class="modal">
+    <form id="formLibro" class="modal-content">
+      <h3 id="modalLibroTitle">Nuevo libro</h3>
+      <input type="hidden" id="libroId">
+      <div class="form-grid">
+        <label>Título *<input type="text" id="libroTitulo" required></label>
+        <label>Autor *<input type="text" id="libroAutor" required></label>
+        <label>ISBN *<input type="text" id="libroIsbn" required></label>
+        <label>Editorial<input type="text" id="libroEditorial"></label>
+        <label>Año *<input type="number" id="libroAnio" required min="1000"></label>
+        <label>Categoría<input type="text" id="libroCategoria"></label>
+        <label>Cantidad disponible *<input type="number" id="libroCantidad" required min="0" value="1"></label>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost modal-close">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Guardar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Modal Préstamo -->
+  <dialog id="modalPrestamo" class="modal">
+    <form id="formPrestamo" class="modal-content">
+      <h3>Registrar préstamo</h3>
+      <div class="form-grid">
+        <label>Libro *
+          <select id="prestamoLibro" required></select>
+        </label>
+        <label>Nombre del usuario *<input type="text" id="prestamoNombre" required></label>
+        <label>Email *<input type="email" id="prestamoEmail" required></label>
+        <label>Días de préstamo<input type="number" id="prestamoDias" value="14" min="1" max="90"></label>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost modal-close">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Registrar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast"></div>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

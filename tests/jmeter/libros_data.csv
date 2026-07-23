@@ -1,0 +1,6 @@
+titulo,autor,isbn,editorial,anio_publicacion,categoria,cantidad_disponible
+Libro JMeter 1,Autor Test 1,978-JM-001,Editorial Test,2023,Prueba,5
+Libro JMeter 2,Autor Test 2,978-JM-002,Editorial Test,2023,Prueba,3
+Libro JMeter 3,Autor Test 3,978-JM-003,Editorial Test,2024,Prueba,4
+Libro JMeter 4,Autor Test 4,978-JM-004,Editorial Test,2024,Prueba,2
+Libro JMeter 5,Autor Test 5,978-JM-005,Editorial Test,2025,Prueba,6
