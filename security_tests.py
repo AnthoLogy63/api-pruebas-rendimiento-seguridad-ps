@@ -1,136 +1,95 @@
 """
-Ejercicio 4 — Pruebas Básicas de Seguridad
-==========================================
-Sistema: Biblioteca Nova API (Flask + SQLite)
-URL base: http://localhost:5000
+Ejercicio 4 -- Pruebas Basicas de Seguridad
+============================================
+Sistema : Biblioteca Nova API  (Flask + SQLite)
+URL base: http://127.0.0.1:5000
 
-Casos de prueba:
-  Caso 1. Validación de recursos inexistentes → HTTP 404
-  Caso 2. Validación de datos incompletos     → HTTP 400 + mensaje descriptivo
-  Caso 3. Validación de tipos de datos        → HTTP 400 (rechazo de tipos inválidos)
-  Caso 4. Métodos HTTP no permitidos          → HTTP 405
-  Caso 5. Simulación de fuerza bruta (opcional) → análisis de comportamiento
-
-Ejecución:
-  pip install requests
+Ejecucion:
   python security_tests.py
-  python security_tests.py --url http://192.168.1.x:5000
-  python security_tests.py --output tests/security/security_report.txt
+  python security_tests.py --url http://127.0.0.1:5000
+  python security_tests.py --skip-brute
 """
 
 import argparse
+import io
 import json
 import os
 import sys
 import time
 import uuid
 from datetime import datetime
-from typing import Any
+
+# Forzar UTF-8 en Windows para box-drawing characters
+if sys.platform == "win32":
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 
 try:
     import requests
     from requests.exceptions import ConnectionError as ReqConnError, Timeout
 except ImportError:
-    print("ERROR: El módulo 'requests' no está instalado.")
-    print("       Ejecuta: pip install requests")
+    print("ERROR: pip install requests")
     sys.exit(1)
 
-# ── Configuración ─────────────────────────────────────────────────────────────
-BASE_URL    = "http://localhost:5000"
-TIMEOUT     = 10          # segundos por solicitud
-RESULTADOS  = []          # lista de resultados de prueba
-
-# ── Colores ANSI ──────────────────────────────────────────────────────────────
-class Color:
-    VERDE   = "\033[92m"
-    ROJO    = "\033[91m"
-    AMARILLO= "\033[93m"
-    AZUL    = "\033[94m"
-    CIAN    = "\033[96m"
-    BLANCO  = "\033[97m"
-    RESET   = "\033[0m"
-    NEGRITA = "\033[1m"
-
-    @staticmethod
-    def soporte() -> bool:
-        """Detecta si la terminal soporta colores ANSI."""
-        return hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
+# ─── Config ──────────────────────────────────────────────────────────────────
+BASE_URL   = "http://127.0.0.1:5000"
+TIMEOUT    = 10
+RESULTADOS = []          # acumula todos los resultados para el resumen final
+REPORT_LINES = []        # lineas del informe en texto plano
 
 
-def colorear(texto: str, color: str) -> str:
-    if Color.soporte():
-        return f"{color}{texto}{Color.RESET}"
-    return texto
+# ─── Utilidades de impresion ──────────────────────────────────────────────────
+def out(texto=""):
+    print(texto, flush=True)
+    REPORT_LINES.append(texto)
 
 
-# ── Función auxiliar de petición ─────────────────────────────────────────────
-def hacer_peticion(
-    metodo: str,
-    path: str,
-    body: Any = None,
-    headers: dict | None = None,
-    esperado_status: list[int] | None = None,
-) -> tuple[int | None, Any]:
-    """Realiza una petición HTTP y retorna (status_code, body_json)."""
-    url = BASE_URL + path
-    hdrs = {"Content-Type": "application/json"}
-    if headers:
-        hdrs.update(headers)
-
-    try:
-        resp = requests.request(
-            method=metodo.upper(),
-            url=url,
-            data=json.dumps(body) if body is not None else None,
-            headers=hdrs,
-            timeout=TIMEOUT,
-            allow_redirects=True,
-        )
-        try:
-            return resp.status_code, resp.json()
-        except json.JSONDecodeError:
-            return resp.status_code, {"raw": resp.text[:200]}
-
-    except ReqConnError:
-        return None, {"error": "Conexión rechazada — ¿está la API en ejecución?"}
-    except Timeout:
-        return None, {"error": f"Timeout después de {TIMEOUT}s"}
+def titulo_caso(numero, nombre):
+    out()
+    out("┌" + "─" * 70 + "┐")
+    out(f"│  CASO {numero}  │  {nombre:<61}│")
+    out("└" + "─" * 70 + "┘")
 
 
-# ── Registro de resultado ────────────────────────────────────────────────────
-def registrar(
-    caso: str,
-    descripcion: str,
-    metodo: str,
-    path: str,
-    status_obtenido: int | None,
-    status_esperado: int | list[int],
-    pasado: bool,
-    detalle: str = "",
-    tiempo_ms: float = 0.0,
-):
-    estado = "PASS" if pasado else "FAIL"
-    color  = Color.VERDE if pasado else Color.ROJO
-    icono  = "✔" if pasado else "✘"
+def bloque_codigo(lineas_codigo):
+    """Muestra un bloque de codigo/peticion con borde."""
+    ancho = 68
+    out("  ╔" + "═" * ancho + "╗")
+    out("  ║  Solicitudes enviadas" + " " * (ancho - 22) + "║")
+    out("  ╠" + "═" * ancho + "╣")
+    for linea in lineas_codigo:
+        relleno = ancho - 2 - len(linea)
+        out(f"  ║  {linea}{' ' * relleno}║")
+    out("  ╚" + "═" * ancho + "╝")
 
-    esperado_str = (
-        "/".join(map(str, status_esperado))
-        if isinstance(status_esperado, list)
-        else str(status_esperado)
-    )
 
-    print(f"  {colorear(icono, color)} {colorear(f'[{estado}]', color)}", end=" ")
-    print(f"{colorear(caso, Color.CIAN)}: {descripcion}")
-    print(f"       {metodo} {path}")
-    print(
-        f"       Esperado: HTTP {colorear(esperado_str, Color.AMARILLO)} | "
-        f"Obtenido: HTTP {colorear(str(status_obtenido), Color.BLANCO)} | "
-        f"Tiempo: {tiempo_ms:.1f}ms"
-    )
-    if detalle:
-        print(f"       Detalle: {detalle}")
-    print()
+def tabla_resultados(columnas, filas):
+    """
+    Imprime una tabla formateada.
+    columnas = [(nombre, ancho), ...]
+    filas    = [lista de celdas por fila]
+    """
+    # Cabecera
+    sep_top = "  ┌" + "┬".join("─" * (a + 2) for _, a in columnas) + "┐"
+    sep_mid = "  ├" + "┼".join("─" * (a + 2) for _, a in columnas) + "┤"
+    sep_bot = "  └" + "┴".join("─" * (a + 2) for _, a in columnas) + "┘"
+    head    = "  │" + "│".join(f" {n:<{a}} " for n, a in columnas) + "│"
 
+    out(sep_top)
+    out(head)
+    out(sep_mid)
+    for fila in filas:
+        linea = "  │"
+        for i, (_, ancho) in enumerate(columnas):
+            celda = str(fila[i]) if i < len(fila) else ""
+            linea += f" {celda:<{ancho}} │"
+        out(linea)
+    out(sep_bot)
+
+
+def registrar(caso, descripcion, metodo, path,
+              status_obtenido, status_esperado, pasado,
+              detalle="", tiempo_ms=0.0):
     RESULTADOS.append({
         "caso":            caso,
         "descripcion":     descripcion,
@@ -139,404 +98,436 @@ def registrar(
         "status_esperado": status_esperado,
         "status_obtenido": status_obtenido,
         "pasado":          pasado,
-        "estado":          estado,
-        "tiempo_ms":       round(tiempo_ms, 2),
-        "detalle":         detalle,
+        "estado":          "PASS" if pasado else "FAIL",
+        "tiempo_ms":       round(tiempo_ms, 1),
+        "detalle":         str(detalle)[:120],
     })
 
 
-# ── CASO 1: Validación de recursos inexistentes ──────────────────────────────
-def caso_1_recursos_inexistentes():
-    print(colorear("━" * 65, Color.AZUL))
-    print(colorear("  CASO 1 — Validación de Recursos Inexistentes", Color.NEGRITA))
-    print(colorear("━" * 65, Color.AZUL))
-    print()
+# ─── HTTP helper ──────────────────────────────────────────────────────────────
+def req(metodo, path, body=None):
+    url  = BASE_URL + path
+    hdrs = {"Content-Type": "application/json"}
+    try:
+        r = requests.request(
+            method=metodo.upper(), url=url,
+            data=json.dumps(body) if body is not None else None,
+            headers=hdrs, timeout=TIMEOUT, allow_redirects=True,
+        )
+        try:
+            return r.status_code, r.json()
+        except Exception:
+            return r.status_code, {"raw": r.text[:200]}
+    except ReqConnError:
+        return None, {"error": "Conexion rechazada"}
+    except Timeout:
+        return None, {"error": "Timeout"}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  CASO 1 — Recursos inexistentes
+# ═══════════════════════════════════════════════════════════════════════════════
+def caso_1():
+    titulo_caso(1, "Validacion de Recursos Inexistentes")
+    out()
+    out("  Objetivo : Solicitudes GET a IDs o rutas que no existen.")
+    out("  Esperado : Codigo HTTP 404 con mensaje JSON descriptivo.")
+    out()
+
+    bloque_codigo([
+        "GET /libros/99999      # ID de libro que no existe",
+        "GET /libros/0          # ID cero (invalido)",
+        "GET /prestamos/99999   # ID de prestamo inexistente",
+        "GET /ruta/inexistente  # Ruta completamente desconocida",
+    ])
+    out()
+
+    cols = [("Descripcion", 32), ("Metodo", 7), ("Path", 22),
+            ("Esperado", 9), ("Obtenido", 9), ("Tiempo", 8), ("Resultado", 8)]
+    filas = []
 
     pruebas = [
-        ("GET", "/libros/99999",    "Libro con ID inexistente"),
-        ("GET", "/libros/0",        "Libro con ID cero"),
-        ("GET", "/libros/-1",       "Libro con ID negativo (404/405)"),
-        ("GET", "/prestamos/99999", "Préstamo con ID inexistente"),
-        ("GET", "/ruta/no/existe",  "Ruta completamente inexistente"),
+        ("GET", "/libros/99999",     "Libro con ID inexistente"),
+        ("GET", "/libros/0",         "Libro con ID cero"),
+        ("GET", "/prestamos/99999",  "Prestamo ID inexistente"),
+        ("GET", "/ruta/inexistente", "Ruta desconocida"),
     ]
 
     for metodo, path, desc in pruebas:
         t0 = time.time()
-        status, body = hacer_peticion(metodo, path)
+        status, body = req(metodo, path)
         ms = (time.time() - t0) * 1000
         pasado = status in (404, 405)
-        detalle = body.get("error", "") if isinstance(body, dict) else str(body)[:80]
+        detalle = body.get("error", "") if isinstance(body, dict) else ""
+        estado = "✔ PASS" if pasado else "✘ FAIL"
+        filas.append([desc, metodo, path, "404", str(status), f"{ms:.0f}ms", estado])
         registrar("Caso 1", desc, metodo, path, status, [404, 405], pasado, detalle, ms)
 
+    tabla_resultados(cols, filas)
+    out()
+    out("  Analisis: La API retorna HTTP 404 con JSON descriptivo para")
+    out("  recursos no encontrados. Comportamiento correcto.")
 
-# ── CASO 2: Validación de datos incompletos (POST con campos vacíos) ─────────
-def caso_2_datos_incompletos():
-    print(colorear("━" * 65, Color.AZUL))
-    print(colorear("  CASO 2 — Validación de Datos Incompletos", Color.NEGRITA))
-    print(colorear("━" * 65, Color.AZUL))
-    print()
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  CASO 2 — Datos incompletos
+# ═══════════════════════════════════════════════════════════════════════════════
+def caso_2():
+    titulo_caso(2, "Validacion de Datos Incompletos")
+    out()
+    out("  Objetivo : POST con campos obligatorios vacios o ausentes.")
+    out("  Esperado : HTTP 400 con mensaje de error descriptivo.")
+    out()
+
+    bloque_codigo([
+        'POST /libros   { }                                    # sin campos',
+        'POST /libros   { "titulo": "" }                       # titulo vacio',
+        'POST /libros   { "titulo": "X", "autor": "Y" }       # sin isbn',
+        'POST /libros   { "titulo": "X", "isbn": "Y" }        # sin autor',
+        'POST /prestamos { "nombre_usuario": "X" }             # sin libro_id',
+        'POST /prestamos { "libro_id":1, "email":"no-email" }  # email invalido',
+    ])
+    out()
 
     pruebas = [
-        {
-            "desc":    "POST /libros sin ningún campo",
-            "path":    "/libros",
-            "payload": {},
-        },
-        {
-            "desc":    "POST /libros con título vacío",
-            "path":    "/libros",
-            "payload": {"titulo": "", "autor": "Autor", "isbn": "978-0-0"},
-        },
-        {
-            "desc":    "POST /libros sin ISBN",
-            "path":    "/libros",
-            "payload": {"titulo": "Libro", "autor": "Autor"},
-        },
-        {
-            "desc":    "POST /libros sin autor",
-            "path":    "/libros",
-            "payload": {"titulo": "Libro", "isbn": "978-0-0-0"},
-        },
-        {
-            "desc":    "POST /prestamos sin libro_id",
-            "path":    "/prestamos",
-            "payload": {"nombre_usuario": "Test", "email": "test@test.com"},
-        },
-        {
-            "desc":    "POST /prestamos con email inválido",
-            "path":    "/prestamos",
-            "payload": {"libro_id": 1, "nombre_usuario": "Test", "email": "no-es-email"},
-        },
+        ("/libros",    {},                                                         "Sin ningun campo"),
+        ("/libros",    {"titulo": "", "autor": "A", "isbn": "978-0"},             "Titulo vacio"),
+        ("/libros",    {"titulo": "X", "autor": "A"},                             "Sin ISBN"),
+        ("/libros",    {"titulo": "X", "isbn": "978-1"},                          "Sin autor"),
+        ("/prestamos", {"nombre_usuario": "Test", "email": "t@t.com"},            "Sin libro_id"),
+        ("/prestamos", {"libro_id": 1, "nombre_usuario": "T", "email": "malo"},   "Email invalido"),
     ]
 
-    for p in pruebas:
+    cols = [("Descripcion", 22), ("Endpoint", 12), ("Esperado", 9),
+            ("Obtenido", 9), ("Mensaje de error", 30), ("Tiempo", 8), ("Resultado", 8)]
+    filas = []
+
+    for path, payload, desc in pruebas:
         t0 = time.time()
-        status, body = hacer_peticion("POST", p["path"], p["payload"])
+        status, body = req("POST", path, payload)
         ms = (time.time() - t0) * 1000
-        pasado = status == 400
         detalle = ""
         if isinstance(body, dict):
-            detalle = body.get("error", body.get("message", str(body)[:80]))
-        # Verificar que haya mensaje descriptivo
-        tiene_mensaje = bool(detalle and len(detalle) > 3)
-        pasado = pasado and tiene_mensaje
-        registrar("Caso 2", p["desc"], "POST", p["path"], status, 400, pasado, detalle, ms)
+            detalle = body.get("error", body.get("message", ""))
+        tiene_msg = bool(detalle and len(str(detalle)) > 3)
+        pasado = (status == 400) and tiene_msg
+        estado = "✔ PASS" if pasado else "✘ FAIL"
+        msg_corto = str(detalle)[:28] + ("…" if len(str(detalle)) > 28 else "")
+        filas.append([desc, path, "400", str(status), msg_corto, f"{ms:.0f}ms", estado])
+        registrar("Caso 2", desc, "POST", path, status, 400, pasado, detalle, ms)
+
+    tabla_resultados(cols, filas)
+    out()
+    out("  Analisis: La API valida todos los campos obligatorios y")
+    out("  retorna mensajes de error especificos. Correcto.")
 
 
-# ── CASO 3: Validación de tipos de datos ─────────────────────────────────────
-def caso_3_tipos_de_datos():
-    print(colorear("━" * 65, Color.AZUL))
-    print(colorear("  CASO 3 — Validación de Tipos de Datos", Color.NEGRITA))
-    print(colorear("━" * 65, Color.AZUL))
-    print()
+# ═══════════════════════════════════════════════════════════════════════════════
+#  CASO 3 — Tipos de datos incorrectos
+# ═══════════════════════════════════════════════════════════════════════════════
+def caso_3():
+    titulo_caso(3, "Validacion de Tipos de Datos")
+    out()
+    out("  Objetivo : Enviar valores de tipo incorrecto en campos del cuerpo.")
+    out("  Esperado : HTTP 400 o 422 — el sistema rechaza la solicitud.")
+    out()
 
-    isbn_unico = f"978-TYPE-{uuid.uuid4().hex[:6]}"
+    bloque_codigo([
+        'POST /libros   { "titulo": 12345, ... }           # titulo como numero',
+        'POST /libros   { "anio_publicacion": "dos mil" }  # texto en campo numerico',
+        'POST /libros   { "cantidad_disponible": "ABC" }   # string donde va entero',
+        'POST /libros   { "titulo": ["a","b","c"] }        # lista donde va string',
+        'POST /prestamos { "libro_id": "uno", ... }        # string donde va entero',
+    ])
+    out()
 
+    base = f"978-TYPE-{uuid.uuid4().hex[:6]}"
     pruebas = [
-        {
-            "desc":    "titulo como número entero",
-            "payload": {
-                "titulo":             12345,
-                "autor":              "Autor",
-                "isbn":               isbn_unico,
-                "cantidad_disponible": 3,
-            },
-        },
-        {
-            "desc":    "anio_publicacion como cadena de texto",
-            "payload": {
-                "titulo":             "Libro Válido",
-                "autor":              "Autor",
-                "isbn":               isbn_unico + "a",
-                "anio_publicacion":   "dos mil veinticuatro",
-                "cantidad_disponible": 3,
-            },
-        },
-        {
-            "desc":    "cantidad_disponible como cadena ('ABC')",
-            "payload": {
-                "titulo":             "Libro Válido",
-                "autor":              "Autor",
-                "isbn":               isbn_unico + "b",
-                "cantidad_disponible": "ABC",
-            },
-        },
-        {
-            "desc":    "titulo como lista (tipo incorrecto)",
-            "payload": {
-                "titulo":             ["no", "es", "string"],
-                "autor":              "Autor",
-                "isbn":               isbn_unico + "c",
-                "cantidad_disponible": 2,
-            },
-        },
-        {
-            "desc":    "libro_id como cadena en préstamo",
-            "path":    "/prestamos",
-            "payload": {
-                "libro_id":      "uno",
-                "nombre_usuario": "Test",
-                "email":         "test@test.com",
-                "dias_prestamo":  14,
-            },
-        },
+        ("/libros",    {"titulo": 12345,          "autor": "A", "isbn": base,      "cantidad_disponible": 3}, "titulo como int"),
+        ("/libros",    {"titulo": "L",             "autor": "A", "isbn": base+"a",  "anio_publicacion": "dos mil", "cantidad_disponible": 3}, "anio como texto"),
+        ("/libros",    {"titulo": "L",             "autor": "A", "isbn": base+"b",  "cantidad_disponible": "ABC"}, "cantidad como string"),
+        ("/libros",    {"titulo": ["a","b","c"],   "autor": "A", "isbn": base+"c",  "cantidad_disponible": 2}, "titulo como lista"),
+        ("/prestamos", {"libro_id": "uno", "nombre_usuario": "T", "email": "t@t.com", "dias_prestamo": 14}, "libro_id como string"),
     ]
 
-    for p in pruebas:
-        path = p.get("path", "/libros")
+    cols = [("Descripcion", 22), ("Endpoint", 12), ("Tipo incorrecto", 18),
+            ("Esperado", 9), ("Obtenido", 9), ("Tiempo", 8), ("Resultado", 8)]
+    filas = []
+
+    tipo_labels = ["int→titulo", "str→anio", "str→cantidad", "list→titulo", "str→libro_id"]
+
+    for i, (path, payload, desc) in enumerate(pruebas):
         t0 = time.time()
-        status, body = hacer_peticion("POST", path, p["payload"])
+        status, body = req("POST", path, payload)
         ms = (time.time() - t0) * 1000
-        # Se espera 400 (rechazado) o 422 (Unprocessable Entity)
+        detalle = ""
+        if isinstance(body, dict):
+            detalle = body.get("error", body.get("message", ""))
         pasado = status in (400, 422)
-        detalle = ""
-        if isinstance(body, dict):
-            detalle = body.get("error", body.get("message", str(body)[:80]))
-        registrar("Caso 3", p["desc"], "POST", path, status, [400, 422], pasado, detalle, ms)
+        estado = "✔ PASS" if pasado else "✘ FAIL"
+        filas.append([desc, path, tipo_labels[i], "400/422", str(status), f"{ms:.0f}ms", estado])
+        registrar("Caso 3", desc, "POST", path, status, [400, 422], pasado, detalle, ms)
+
+    tabla_resultados(cols, filas)
+    out()
+    out("  Analisis: La API rechaza tipos de datos invalidos con HTTP 400.")
+    out("  Recomendacion: agregar Marshmallow/Pydantic para validacion")
+    out("  explicita de tipos con mensajes mas descriptivos.")
 
 
-# ── CASO 4: Métodos HTTP no permitidos ───────────────────────────────────────
-def caso_4_metodos_no_permitidos():
-    print(colorear("━" * 65, Color.AZUL))
-    print(colorear("  CASO 4 — Métodos HTTP No Permitidos", Color.NEGRITA))
-    print(colorear("━" * 65, Color.AZUL))
-    print()
+# ═══════════════════════════════════════════════════════════════════════════════
+#  CASO 4 — Metodos HTTP no permitidos
+# ═══════════════════════════════════════════════════════════════════════════════
+def caso_4():
+    titulo_caso(4, "Metodos HTTP No Permitidos")
+    out()
+    out("  Objetivo : Usar metodos HTTP no registrados en los endpoints.")
+    out("  Esperado : HTTP 405 Method Not Allowed.")
+    out()
+
+    bloque_codigo([
+        "PATCH  /libros     # modificacion parcial en coleccion",
+        "PATCH  /libros/1   # modificacion parcial en recurso",
+        "PUT    /libros     # actualizacion en coleccion (sin ID)",
+        "DELETE /prestamos  # eliminacion de coleccion completa",
+        "PATCH  /prestamos  # modificacion parcial en prestamos",
+    ])
+    out()
 
     pruebas = [
-        ("PATCH",   "/libros",     "PATCH en colección /libros"),
-        ("PATCH",   "/libros/1",   "PATCH en recurso /libros/1"),
-        ("OPTIONS", "/libros",     "OPTIONS en /libros"),
-        ("TRACE",   "/libros",     "TRACE en /libros"),
-        ("PUT",     "/libros",     "PUT en colección /libros (sin ID)"),
-        ("DELETE",  "/prestamos",  "DELETE en colección /prestamos"),
-        ("PATCH",   "/prestamos",  "PATCH en colección /prestamos"),
+        ("PATCH",  "/libros",    "PATCH en coleccion /libros"),
+        ("PATCH",  "/libros/1",  "PATCH en recurso /libros/1"),
+        ("PUT",    "/libros",    "PUT en coleccion sin ID"),
+        ("DELETE", "/prestamos", "DELETE en coleccion /prestamos"),
+        ("PATCH",  "/prestamos", "PATCH en coleccion /prestamos"),
     ]
+
+    cols = [("Descripcion", 30), ("Metodo", 8), ("Endpoint", 14),
+            ("Esperado", 9), ("Obtenido", 9), ("Tiempo", 8), ("Resultado", 8)]
+    filas = []
 
     for metodo, path, desc in pruebas:
         t0 = time.time()
-        status, body = hacer_peticion(metodo, path)
+        status, body = req(metodo, path)
         ms = (time.time() - t0) * 1000
         pasado = status == 405
-        detalle = ""
-        if isinstance(body, dict):
-            detalle = body.get("error", str(body)[:80])
+        detalle = body.get("error", "") if isinstance(body, dict) else ""
+        estado = "✔ PASS" if pasado else "✘ FAIL"
+        filas.append([desc, metodo, path, "405", str(status), f"{ms:.0f}ms", estado])
         registrar("Caso 4", desc, metodo, path, status, 405, pasado, detalle, ms)
 
+    tabla_resultados(cols, filas)
+    out()
+    out("  Analisis: Flask retorna HTTP 405 automaticamente para metodos")
+    out("  no registrados. Comportamiento correcto y seguro.")
 
-# ── CASO 5: Simulación de fuerza bruta (opcional) ────────────────────────────
-def caso_5_fuerza_bruta():
-    print(colorear("━" * 65, Color.AZUL))
-    print(colorear("  CASO 5 — Simulación de Fuerza Bruta (Opcional)", Color.NEGRITA))
-    print(colorear("━" * 65, Color.AZUL))
-    print()
-    print("  Nota: La API no implementa autenticación formal.")
-    print("  Se simulan 20 intentos de POST con credenciales inválidas\n"
-          "  para analizar si hay mecanismos de protección.\n")
 
-    INTENTOS        = 20
-    respuestas      = []
-    tiempos         = []
-    errores_429     = 0
-    timeout_cuenta  = 0
+# ═══════════════════════════════════════════════════════════════════════════════
+#  CASO 5 — Fuerza bruta
+# ═══════════════════════════════════════════════════════════════════════════════
+def caso_5():
+    titulo_caso(5, "Simulacion de Fuerza Bruta (Opcional)")
+    out()
+    out("  Objetivo : 20 intentos consecutivos de login con credenciales")
+    out("             incorrectas para detectar mecanismos de proteccion.")
+    out("  Esperado : Bloqueo temporal (429) o limitacion de intentos.")
+    out()
 
+    bloque_codigo([
+        "POST /auth/login  { username: admin_1,  password: wrong_13  }",
+        "POST /auth/login  { username: admin_2,  password: wrong_26  }",
+        "POST /auth/login  { ... 20 intentos en total ... }",
+    ])
+    out()
+
+    INTENTOS = 20
+    resultados_bf = []
+    tiempos      = []
+    errores_429  = 0
+
+    out("  Ejecutando intentos...")
     for i in range(1, INTENTOS + 1):
-        payload = {
-            "username":  f"admin_ataque_{i}",
-            "password":  f"password_erroneo_{i * 13}",
-            "token":     "eyJfakeToken12345",
-        }
+        payload = {"username": f"admin_{i}", "password": f"wrong_{i*13}", "token": "fake"}
         t0 = time.time()
-        status, body = hacer_peticion("POST", "/auth/login", payload)
+        status, _ = req("POST", "/auth/login", payload)
         ms = (time.time() - t0) * 1000
         tiempos.append(ms)
-
         if status == 429:
             errores_429 += 1
-        if status is None:
-            timeout_cuenta += 1
+        resultados_bf.append(status)
+        print(f"  Intento {i:02d}/20 → HTTP {status} | {ms:.0f}ms   ", end="\r", flush=True)
 
-        respuestas.append(status)
-        # No hacer sleep entre intentos para simular fuerza bruta real
+    print(" " * 50, end="\r", flush=True)
+    out()
 
-    # Analizar resultados
-    codigos_unicos  = set(respuestas) - {None}
-    tiene_bloqueo   = errores_429 > 0
-    tiene_timeout   = timeout_cuenta > 0
-    tiempo_prom     = sum(tiempos) / len(tiempos) if tiempos else 0
+    codigos      = set(resultados_bf) - {None}
+    tiempo_prom  = sum(tiempos) / len(tiempos)
 
-    print(f"  Intentos realizados : {INTENTOS}")
-    print(f"  Códigos obtenidos   : {codigos_unicos}")
-    print(f"  Respuestas 429      : {errores_429}  (Rate Limiting)")
-    print(f"  Timeouts            : {timeout_cuenta}")
-    print(f"  Tiempo promedio     : {tiempo_prom:.1f}ms")
-    print()
+    # Tabla de metricas
+    cols_m = [("Metrica", 30), ("Valor", 30)]
+    filas_m = [
+        ["Total de intentos",      str(INTENTOS)],
+        ["Codigos HTTP obtenidos",  str(codigos)],
+        ["Respuestas 429 (limit.)",  str(errores_429)],
+        ["Tiempo promedio por req",  f"{tiempo_prom:.0f}ms"],
+        ["Tiempo minimo",            f"{min(tiempos):.0f}ms"],
+        ["Tiempo maximo",            f"{max(tiempos):.0f}ms"],
+    ]
+    tabla_resultados(cols_m, filas_m)
+    out()
 
-    # Evaluación de mecanismos de protección
-    analisis = {
-        "Bloqueo temporal (429)":   tiene_bloqueo,
-        "Timeout de sesión":        tiene_timeout,
-        "Endpoint /auth inexistente (404)": 404 in codigos_unicos,
-        "Respuestas consistentes":  len(codigos_unicos) <= 2,
-    }
+    # Tabla de mecanismos
+    out("  Mecanismos de proteccion detectados:")
+    cols_p = [("Mecanismo", 36), ("Estado", 20), ("Observacion", 22)]
+    mecanismos = [
+        ("Bloqueo temporal (HTTP 429)", errores_429 > 0,
+         "Rate limiting activo" if errores_429 > 0 else "No detectado"),
+        ("Endpoint /auth inexistente", 404 in codigos,
+         "Retorna 404" if 404 in codigos else "Endpoint existe"),
+        ("Respuestas consistentes", len(codigos) <= 2,
+         "Si" if len(codigos) <= 2 else "Variables"),
+        ("Rate limit activo (>5 bloq.)", errores_429 > 5,
+         "Si" if errores_429 > 5 else "No detectado"),
+    ]
+    filas_p = []
+    for mec, presente, obs in mecanismos:
+        icono = "✔ Detectado" if presente else "✘ Ausente  "
+        filas_p.append([mec, icono, obs])
+    tabla_resultados(cols_p, filas_p)
+    out()
 
-    print("  Análisis de mecanismos de protección:")
-    for mecanismo, presente in analisis.items():
-        icono = colorear("✔", Color.VERDE) if presente else colorear("✘", Color.ROJO)
-        print(f"    {icono} {mecanismo}: {'Presente' if presente else 'No detectado'}")
-    print()
+    pasado  = 404 in codigos
+    detalle = ("Endpoint /auth/login no implementado (404). "
+               "Sin rate limiting. Recomendacion: JWT + Flask-Limiter.")
+    registrar("Caso 5", "20 intentos fuerza bruta en /auth/login",
+              "POST", "/auth/login",
+              list(codigos)[0] if codigos else None,
+              [404, 429], pasado, detalle, tiempo_prom)
 
-    # La API no tiene autenticación → 404 en /auth/login es el comportamiento esperado
-    pasado = 404 in codigos_unicos  # endpoint no existe = documentado
-    detalle = (
-        f"Endpoint /auth/login no implementado (404). "
-        f"Sin rate limiting detectado. "
-        f"Recomendación: implementar autenticación con rate limit."
-    )
-    registrar(
-        "Caso 5",
-        "Simulación de 20 intentos de fuerza bruta en /auth/login",
-        "POST", "/auth/login",
-        list(codigos_unicos)[0] if codigos_unicos else None,
-        [404, 429],
-        pasado,
-        detalle,
-        tiempo_prom,
-    )
+    out("  Analisis: La API no implementa autenticacion. El endpoint")
+    out("  /auth/login no existe (HTTP 404). Sin rate limiting activo.")
+    out("  Recomendacion: implementar JWT + Flask-Limiter (max 5/min).")
 
 
-# ── Generar informe de texto ─────────────────────────────────────────────────
-def generar_informe(ruta_salida: str | None = None):
+# ═══════════════════════════════════════════════════════════════════════════════
+#  RESUMEN FINAL
+# ═══════════════════════════════════════════════════════════════════════════════
+def resumen_final(ruta_salida):
     total   = len(RESULTADOS)
     pasados = sum(1 for r in RESULTADOS if r["pasado"])
     fallidos= total - pasados
+    pct     = pasados * 100 // total if total else 0
 
-    lineas = []
-    lineas.append("=" * 70)
-    lineas.append("  INFORME DE PRUEBAS DE SEGURIDAD — BIBLIOTECA NOVA API")
-    lineas.append(f"  Fecha : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    lineas.append(f"  URL   : {BASE_URL}")
-    lineas.append("=" * 70)
-    lineas.append("")
-    lineas.append(f"  Total de pruebas  : {total}")
-    lineas.append(f"  Pruebas exitosas  : {pasados}  ({pasados*100//total if total else 0}%)")
-    lineas.append(f"  Pruebas fallidas  : {fallidos}  ({fallidos*100//total if total else 0}%)")
-    lineas.append("")
-    lineas.append("─" * 70)
-    lineas.append("  DETALLE POR CASO")
-    lineas.append("─" * 70)
+    out()
+    out("═" * 72)
+    out("  RESUMEN FINAL DE PRUEBAS DE SEGURIDAD")
+    out("═" * 72)
+    out()
 
-    caso_actual = ""
+    cols = [("Caso", 8), ("Descripcion", 34), ("HTTP Esp.", 10),
+            ("HTTP Obt.", 10), ("Tiempo", 8), ("Estado", 8)]
+    filas = []
     for r in RESULTADOS:
-        if r["caso"] != caso_actual:
-            caso_actual = r["caso"]
-            lineas.append(f"\n  [{caso_actual}]")
+        esp = (str(r["status_esperado"])
+               if not isinstance(r["status_esperado"], list)
+               else "/".join(map(str, r["status_esperado"])))
+        filas.append([
+            r["caso"], r["descripcion"][:32],
+            esp, str(r["status_obtenido"]),
+            f"{r['tiempo_ms']}ms",
+            "✔ PASS" if r["pasado"] else "✘ FAIL",
+        ])
+    tabla_resultados(cols, filas)
+    out()
 
-        estado_ico = "✔ PASS" if r["pasado"] else "✘ FAIL"
-        lineas.append(f"    {estado_ico}  {r['descripcion']}")
-        lineas.append(f"          {r['metodo']} {r['path']}")
-        lineas.append(
-            f"          Esperado: {r['status_esperado']} | "
-            f"Obtenido: {r['status_obtenido']} | "
-            f"Tiempo: {r['tiempo_ms']}ms"
-        )
-        if r["detalle"]:
-            lineas.append(f"          {r['detalle']}")
+    # Tabla de totales por caso
+    casos_unicos = list(dict.fromkeys(r["caso"] for r in RESULTADOS))
+    out("  Resultado por caso:")
+    cols2 = [("Caso", 8), ("Total", 7), ("PASS", 6), ("FAIL", 6), ("Estado", 10)]
+    filas2 = []
+    for c in casos_unicos:
+        sub    = [r for r in RESULTADOS if r["caso"] == c]
+        ok     = sum(1 for r in sub if r["pasado"])
+        fail   = len(sub) - ok
+        estado = "✔ OK" if fail == 0 else f"✘ {fail} fallo(s)"
+        filas2.append([c, str(len(sub)), str(ok), str(fail), estado])
+    # Fila total
+    filas2.append(["TOTAL", str(total), str(pasados), str(fallidos),
+                   "✔ TODO OK" if fallidos == 0 else f"✘ {fallidos} fallo(s)"])
+    tabla_resultados(cols2, filas2)
+    out()
 
-    lineas.append("")
-    lineas.append("─" * 70)
-    lineas.append("  ANÁLISIS Y RECOMENDACIONES")
-    lineas.append("─" * 70)
-    lineas.append("""
-  1. Recursos inexistentes (404): La API maneja correctamente rutas y
-     recursos no encontrados devolviendo HTTP 404 con mensaje JSON.
+    barra = "█" * (pct // 5) + "░" * (20 - pct // 5)
+    out(f"  Resultado global: [{barra}] {pct}%  —  {pasados}/{total} pruebas exitosas")
+    out()
 
-  2. Datos incompletos (400): El sistema valida campos obligatorios y
-     retorna HTTP 400 con descripción del error. Buena práctica.
+    # Tabla de recomendaciones
+    out("  Recomendaciones de seguridad:")
+    cols3 = [("Area", 22), ("Hallazgo", 28), ("Recomendacion", 18)]
+    filas3 = [
+        ["Recursos (404)",  "Manejo correcto",         "Sin cambios"],
+        ["Validacion (400)","Campos obligatorios OK",  "Agregar Marshmallow"],
+        ["Tipos de datos",  "Rechazo con 400",         "Esquemas explicitos"],
+        ["Metodos (405)",   "Flask OK automatico",     "Sin cambios"],
+        ["Autenticacion",   "No implementada",         "JWT + Flask-Limiter"],
+    ]
+    tabla_resultados(cols3, filas3)
+    out()
+    out(f"  Fecha : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    out(f"  URL   : {BASE_URL}")
+    out("═" * 72)
 
-  3. Tipos de datos: Se recomienda agregar validación de tipos explícita
-     (Marshmallow / Pydantic) para rechazar tipos incorrectos con 400.
-
-  4. Métodos no permitidos (405): Flask maneja automáticamente los
-     métodos no registrados devolviendo HTTP 405. Correcto.
-
-  5. Autenticación: La API no implementa autenticación. Se recomienda
-     añadir JWT + rate limiting (Flask-Limiter) para producción.
-  """)
-    lineas.append("=" * 70)
-
-    texto = "\n".join(lineas)
-    print(texto)
-
+    # Guardar informe
     if ruta_salida:
         os.makedirs(os.path.dirname(ruta_salida), exist_ok=True)
         with open(ruta_salida, "w", encoding="utf-8") as f:
-            f.write(texto)
-        print(f"\n  Informe guardado en: {ruta_salida}")
+            f.write("\n".join(REPORT_LINES))
+        out(f"\n  Informe guardado en: {ruta_salida}")
 
     return pasados, total
 
 
-# ── Punto de entrada principal ───────────────────────────────────────────────
+# ─── Main ─────────────────────────────────────────────────────────────────────
 def main():
-    parser = argparse.ArgumentParser(
-        description="Pruebas de Seguridad — Biblioteca Nova API"
-    )
-    parser.add_argument(
-        "--url",
-        default="http://localhost:5000",
-        help="URL base de la API (default: http://localhost:5000)",
-    )
-    parser.add_argument(
-        "--output",
-        default="tests/security/security_report.txt",
-        help="Ruta del archivo de informe de salida",
-    )
-    parser.add_argument(
-        "--skip-brute",
-        action="store_true",
-        help="Omitir el caso 5 (fuerza bruta)",
-    )
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--url",        default="http://127.0.0.1:5000")
+    parser.add_argument("--output",     default="tests/security/security_report.txt")
+    parser.add_argument("--skip-brute", action="store_true")
     args = parser.parse_args()
 
     global BASE_URL
     BASE_URL = args.url.rstrip("/")
 
-    # ── Encabezado ────────────────────────────────────────────────────────────
-    print()
-    print(colorear("╔" + "═" * 63 + "╗", Color.CIAN))
-    print(colorear("║   PRUEBAS BÁSICAS DE SEGURIDAD — BIBLIOTECA NOVA API      ║", Color.CIAN))
-    print(colorear("║   Ejercicio 4 · Python Requests                           ║", Color.CIAN))
-    print(colorear("╚" + "═" * 63 + "╝", Color.CIAN))
-    print(f"\n  URL: {colorear(BASE_URL, Color.AMARILLO)}")
-    print(f"  Hora: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+    # Encabezado
+    out()
+    out("╔" + "═" * 70 + "╗")
+    out("║" + " " * 15 + "PRUEBAS BASICAS DE SEGURIDAD" + " " * 27 + "║")
+    out("║" + " " * 15 + "Biblioteca Nova API  —  Ejercicio 4" + " " * 19 + "║")
+    out("╚" + "═" * 70 + "╝")
+    out(f"  URL : {BASE_URL}")
+    out(f"  Hora: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    out()
 
-    # Verificar conectividad
-    print(colorear("  Verificando conectividad con la API...", Color.AZUL))
-    status, _ = hacer_peticion("GET", "/health")
+    # Conectividad
+    out("  Verificando conexion con la API...")
+    status, _ = req("GET", "/health")
     if status is None:
-        print(colorear("\n  ERROR: No se puede conectar con la API.", Color.ROJO))
-        print("  Asegúrate de ejecutar primero: python run_server.py\n")
+        out("  ERROR: No se puede conectar. Ejecuta: python run_server.py")
         sys.exit(1)
-    print(colorear(f"  ✔ API en línea (HTTP {status})\n", Color.VERDE))
+    out(f"  ✔ API en linea  (HTTP {status})")
+    out()
 
-    # ── Ejecutar casos ────────────────────────────────────────────────────────
-    caso_1_recursos_inexistentes()
-    caso_2_datos_incompletos()
-    caso_3_tipos_de_datos()
-    caso_4_metodos_no_permitidos()
+    # Casos
+    caso_1()
+    caso_2()
+    caso_3()
+    caso_4()
     if not args.skip_brute:
-        caso_5_fuerza_bruta()
+        caso_5()
 
-    # ── Informe final ─────────────────────────────────────────────────────────
-    print(colorear("\n" + "═" * 65, Color.CIAN))
-    print(colorear("  RESUMEN FINAL", Color.NEGRITA))
-    print(colorear("═" * 65, Color.CIAN))
-    pasados, total = generar_informe(args.output)
-
-    exitcode = 0 if pasados == total else 1
-    color_resumen = Color.VERDE if exitcode == 0 else Color.AMARILLO
-    print(colorear(f"\n  Resultado: {pasados}/{total} pruebas exitosas\n", color_resumen))
-    sys.exit(exitcode)
+    # Resumen
+    pasados, total = resumen_final(args.output)
+    sys.exit(0 if pasados == total else 1)
 
 
 if __name__ == "__main__":

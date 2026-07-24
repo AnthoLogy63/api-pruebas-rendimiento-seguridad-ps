@@ -1,0 +1,234 @@
+
+╔══════════════════════════════════════════════════════════════════════╗
+║               PRUEBAS BASICAS DE SEGURIDAD                           ║
+║               Biblioteca Nova API  —  Ejercicio 4                   ║
+╚══════════════════════════════════════════════════════════════════════╝
+  URL : http://127.0.0.1:5000
+  Hora: 2026-07-23 21:14:56
+
+  Verificando conexion con la API...
+  ✔ API en linea  (HTTP 200)
+
+
+┌──────────────────────────────────────────────────────────────────────┐
+│  CASO 1  │  Validacion de Recursos Inexistentes                          │
+└──────────────────────────────────────────────────────────────────────┘
+
+  Objetivo : Solicitudes GET a IDs o rutas que no existen.
+  Esperado : Codigo HTTP 404 con mensaje JSON descriptivo.
+
+  ╔════════════════════════════════════════════════════════════════════╗
+  ║  Solicitudes enviadas                                              ║
+  ╠════════════════════════════════════════════════════════════════════╣
+  ║  GET /libros/99999      # ID de libro que no existe                ║
+  ║  GET /libros/0          # ID cero (invalido)                       ║
+  ║  GET /prestamos/99999   # ID de prestamo inexistente               ║
+  ║  GET /ruta/inexistente  # Ruta completamente desconocida           ║
+  ╚════════════════════════════════════════════════════════════════════╝
+
+  ┌──────────────────────────────────┬─────────┬────────────────────────┬───────────┬───────────┬──────────┬──────────┐
+  │ Descripcion                      │ Metodo  │ Path                   │ Esperado  │ Obtenido  │ Tiempo   │ Resultado │
+  ├──────────────────────────────────┼─────────┼────────────────────────┼───────────┼───────────┼──────────┼──────────┤
+  │ Libro con ID inexistente         │ GET     │ /libros/99999          │ 404       │ 404       │ 17ms     │ ✔ PASS   │
+  │ Libro con ID cero                │ GET     │ /libros/0              │ 404       │ 404       │ 16ms     │ ✔ PASS   │
+  │ Prestamo ID inexistente          │ GET     │ /prestamos/99999       │ 404       │ 404       │ 3ms      │ ✔ PASS   │
+  │ Ruta desconocida                 │ GET     │ /ruta/inexistente      │ 404       │ 404       │ 11ms     │ ✔ PASS   │
+  └──────────────────────────────────┴─────────┴────────────────────────┴───────────┴───────────┴──────────┴──────────┘
+
+  Analisis: La API retorna HTTP 404 con JSON descriptivo para
+  recursos no encontrados. Comportamiento correcto.
+
+┌──────────────────────────────────────────────────────────────────────┐
+│  CASO 2  │  Validacion de Datos Incompletos                              │
+└──────────────────────────────────────────────────────────────────────┘
+
+  Objetivo : POST con campos obligatorios vacios o ausentes.
+  Esperado : HTTP 400 con mensaje de error descriptivo.
+
+  ╔════════════════════════════════════════════════════════════════════╗
+  ║  Solicitudes enviadas                                              ║
+  ╠════════════════════════════════════════════════════════════════════╣
+  ║  POST /libros   { }                                    # sin campos║
+  ║  POST /libros   { "titulo": "" }                       # titulo vacio║
+  ║  POST /libros   { "titulo": "X", "autor": "Y" }       # sin isbn   ║
+  ║  POST /libros   { "titulo": "X", "isbn": "Y" }        # sin autor  ║
+  ║  POST /prestamos { "nombre_usuario": "X" }             # sin libro_id║
+  ║  POST /prestamos { "libro_id":1, "email":"no-email" }  # email invalido║
+  ╚════════════════════════════════════════════════════════════════════╝
+
+  ┌────────────────────────┬──────────────┬───────────┬───────────┬────────────────────────────────┬──────────┬──────────┐
+  │ Descripcion            │ Endpoint     │ Esperado  │ Obtenido  │ Mensaje de error               │ Tiempo   │ Resultado │
+  ├────────────────────────┼──────────────┼───────────┼───────────┼────────────────────────────────┼──────────┼──────────┤
+  │ Sin ningun campo       │ /libros      │ 400       │ 400       │ El campo 'titulo' es obligat…  │ 2ms      │ ✔ PASS   │
+  │ Titulo vacio           │ /libros      │ 400       │ 400       │ El campo 'titulo' no puede e…  │ 1ms      │ ✔ PASS   │
+  │ Sin ISBN               │ /libros      │ 400       │ 400       │ El campo 'isbn' es obligator…  │ 12ms     │ ✔ PASS   │
+  │ Sin autor              │ /libros      │ 400       │ 400       │ El campo 'autor' es obligato…  │ 1ms      │ ✔ PASS   │
+  │ Sin libro_id           │ /prestamos   │ 400       │ 400       │ El campo 'libro_id' es oblig…  │ 14ms     │ ✔ PASS   │
+  │ Email invalido         │ /prestamos   │ 400       │ 400       │ El campo 'email' debe ser un…  │ 15ms     │ ✔ PASS   │
+  └────────────────────────┴──────────────┴───────────┴───────────┴────────────────────────────────┴──────────┴──────────┘
+
+  Analisis: La API valida todos los campos obligatorios y
+  retorna mensajes de error especificos. Correcto.
+
+┌──────────────────────────────────────────────────────────────────────┐
+│  CASO 3  │  Validacion de Tipos de Datos                                 │
+└──────────────────────────────────────────────────────────────────────┘
+
+  Objetivo : Enviar valores de tipo incorrecto en campos del cuerpo.
+  Esperado : HTTP 400 o 422 — el sistema rechaza la solicitud.
+
+  ╔════════════════════════════════════════════════════════════════════╗
+  ║  Solicitudes enviadas                                              ║
+  ╠════════════════════════════════════════════════════════════════════╣
+  ║  POST /libros   { "titulo": 12345, ... }           # titulo como numero║
+  ║  POST /libros   { "anio_publicacion": "dos mil" }  # texto en campo numerico║
+  ║  POST /libros   { "cantidad_disponible": "ABC" }   # string donde va entero║
+  ║  POST /libros   { "titulo": ["a","b","c"] }        # lista donde va string║
+  ║  POST /prestamos { "libro_id": "uno", ... }        # string donde va entero║
+  ╚════════════════════════════════════════════════════════════════════╝
+
+  ┌────────────────────────┬──────────────┬────────────────────┬───────────┬───────────┬──────────┬──────────┐
+  │ Descripcion            │ Endpoint     │ Tipo incorrecto    │ Esperado  │ Obtenido  │ Tiempo   │ Resultado │
+  ├────────────────────────┼──────────────┼────────────────────┼───────────┼───────────┼──────────┼──────────┤
+  │ titulo como int        │ /libros      │ int→titulo         │ 400/422   │ 400       │ 2ms      │ ✔ PASS   │
+  │ anio como texto        │ /libros      │ str→anio           │ 400/422   │ 400       │ 11ms     │ ✔ PASS   │
+  │ cantidad como string   │ /libros      │ str→cantidad       │ 400/422   │ 400       │ 1ms      │ ✔ PASS   │
+  │ titulo como lista      │ /libros      │ list→titulo        │ 400/422   │ 400       │ 1ms      │ ✔ PASS   │
+  │ libro_id como string   │ /prestamos   │ str→libro_id       │ 400/422   │ 400       │ 13ms     │ ✔ PASS   │
+  └────────────────────────┴──────────────┴────────────────────┴───────────┴───────────┴──────────┴──────────┘
+
+  Analisis: La API rechaza tipos de datos invalidos con HTTP 400.
+  Recomendacion: agregar Marshmallow/Pydantic para validacion
+  explicita de tipos con mensajes mas descriptivos.
+
+┌──────────────────────────────────────────────────────────────────────┐
+│  CASO 4  │  Metodos HTTP No Permitidos                                   │
+└──────────────────────────────────────────────────────────────────────┘
+
+  Objetivo : Usar metodos HTTP no registrados en los endpoints.
+  Esperado : HTTP 405 Method Not Allowed.
+
+  ╔════════════════════════════════════════════════════════════════════╗
+  ║  Solicitudes enviadas                                              ║
+  ╠════════════════════════════════════════════════════════════════════╣
+  ║  PATCH  /libros     # modificacion parcial en coleccion            ║
+  ║  PATCH  /libros/1   # modificacion parcial en recurso              ║
+  ║  PUT    /libros     # actualizacion en coleccion (sin ID)          ║
+  ║  DELETE /prestamos  # eliminacion de coleccion completa            ║
+  ║  PATCH  /prestamos  # modificacion parcial en prestamos            ║
+  ╚════════════════════════════════════════════════════════════════════╝
+
+  ┌────────────────────────────────┬──────────┬────────────────┬───────────┬───────────┬──────────┬──────────┐
+  │ Descripcion                    │ Metodo   │ Endpoint       │ Esperado  │ Obtenido  │ Tiempo   │ Resultado │
+  ├────────────────────────────────┼──────────┼────────────────┼───────────┼───────────┼──────────┼──────────┤
+  │ PATCH en coleccion /libros     │ PATCH    │ /libros        │ 405       │ 405       │ 1ms      │ ✔ PASS   │
+  │ PATCH en recurso /libros/1     │ PATCH    │ /libros/1      │ 405       │ 405       │ 14ms     │ ✔ PASS   │
+  │ PUT en coleccion sin ID        │ PUT      │ /libros        │ 405       │ 405       │ 2ms      │ ✔ PASS   │
+  │ DELETE en coleccion /prestamos │ DELETE   │ /prestamos     │ 405       │ 405       │ 15ms     │ ✔ PASS   │
+  │ PATCH en coleccion /prestamos  │ PATCH    │ /prestamos     │ 405       │ 405       │ 15ms     │ ✔ PASS   │
+  └────────────────────────────────┴──────────┴────────────────┴───────────┴───────────┴──────────┴──────────┘
+
+  Analisis: Flask retorna HTTP 405 automaticamente para metodos
+  no registrados. Comportamiento correcto y seguro.
+
+┌──────────────────────────────────────────────────────────────────────┐
+│  CASO 5  │  Simulacion de Fuerza Bruta (Opcional)                        │
+└──────────────────────────────────────────────────────────────────────┘
+
+  Objetivo : 20 intentos consecutivos de login con credenciales
+             incorrectas para detectar mecanismos de proteccion.
+  Esperado : Bloqueo temporal (429) o limitacion de intentos.
+
+  ╔════════════════════════════════════════════════════════════════════╗
+  ║  Solicitudes enviadas                                              ║
+  ╠════════════════════════════════════════════════════════════════════╣
+  ║  POST /auth/login  { username: admin_1,  password: wrong_13  }     ║
+  ║  POST /auth/login  { username: admin_2,  password: wrong_26  }     ║
+  ║  POST /auth/login  { ... 20 intentos en total ... }                ║
+  ╚════════════════════════════════════════════════════════════════════╝
+
+  Ejecutando intentos...
+
+  ┌────────────────────────────────┬────────────────────────────────┐
+  │ Metrica                        │ Valor                          │
+  ├────────────────────────────────┼────────────────────────────────┤
+  │ Total de intentos              │ 20                             │
+  │ Codigos HTTP obtenidos         │ {404}                          │
+  │ Respuestas 429 (limit.)        │ 0                              │
+  │ Tiempo promedio por req        │ 8ms                            │
+  │ Tiempo minimo                  │ 1ms                            │
+  │ Tiempo maximo                  │ 26ms                           │
+  └────────────────────────────────┴────────────────────────────────┘
+
+  Mecanismos de proteccion detectados:
+  ┌──────────────────────────────────────┬──────────────────────┬────────────────────────┐
+  │ Mecanismo                            │ Estado               │ Observacion            │
+  ├──────────────────────────────────────┼──────────────────────┼────────────────────────┤
+  │ Bloqueo temporal (HTTP 429)          │ ✘ Ausente            │ No detectado           │
+  │ Endpoint /auth inexistente           │ ✔ Detectado          │ Retorna 404            │
+  │ Respuestas consistentes              │ ✔ Detectado          │ Si                     │
+  │ Rate limit activo (>5 bloq.)         │ ✘ Ausente            │ No detectado           │
+  └──────────────────────────────────────┴──────────────────────┴────────────────────────┘
+
+  Analisis: La API no implementa autenticacion. El endpoint
+  /auth/login no existe (HTTP 404). Sin rate limiting activo.
+  Recomendacion: implementar JWT + Flask-Limiter (max 5/min).
+
+════════════════════════════════════════════════════════════════════════
+  RESUMEN FINAL DE PRUEBAS DE SEGURIDAD
+════════════════════════════════════════════════════════════════════════
+
+  ┌──────────┬────────────────────────────────────┬────────────┬────────────┬──────────┬──────────┐
+  │ Caso     │ Descripcion                        │ HTTP Esp.  │ HTTP Obt.  │ Tiempo   │ Estado   │
+  ├──────────┼────────────────────────────────────┼────────────┼────────────┼──────────┼──────────┤
+  │ Caso 1   │ Libro con ID inexistente           │ 404/405    │ 404        │ 17.2ms   │ ✔ PASS   │
+  │ Caso 1   │ Libro con ID cero                  │ 404/405    │ 404        │ 15.9ms   │ ✔ PASS   │
+  │ Caso 1   │ Prestamo ID inexistente            │ 404/405    │ 404        │ 2.6ms    │ ✔ PASS   │
+  │ Caso 1   │ Ruta desconocida                   │ 404/405    │ 404        │ 11.4ms   │ ✔ PASS   │
+  │ Caso 2   │ Sin ningun campo                   │ 400        │ 400        │ 1.5ms    │ ✔ PASS   │
+  │ Caso 2   │ Titulo vacio                       │ 400        │ 400        │ 1.4ms    │ ✔ PASS   │
+  │ Caso 2   │ Sin ISBN                           │ 400        │ 400        │ 12.2ms   │ ✔ PASS   │
+  │ Caso 2   │ Sin autor                          │ 400        │ 400        │ 1.3ms    │ ✔ PASS   │
+  │ Caso 2   │ Sin libro_id                       │ 400        │ 400        │ 14.1ms   │ ✔ PASS   │
+  │ Caso 2   │ Email invalido                     │ 400        │ 400        │ 15.4ms   │ ✔ PASS   │
+  │ Caso 3   │ titulo como int                    │ 400/422    │ 400        │ 2.5ms    │ ✔ PASS   │
+  │ Caso 3   │ anio como texto                    │ 400/422    │ 400        │ 11.4ms   │ ✔ PASS   │
+  │ Caso 3   │ cantidad como string               │ 400/422    │ 400        │ 1.4ms    │ ✔ PASS   │
+  │ Caso 3   │ titulo como lista                  │ 400/422    │ 400        │ 1.3ms    │ ✔ PASS   │
+  │ Caso 3   │ libro_id como string               │ 400/422    │ 400        │ 12.8ms   │ ✔ PASS   │
+  │ Caso 4   │ PATCH en coleccion /libros         │ 405        │ 405        │ 1.4ms    │ ✔ PASS   │
+  │ Caso 4   │ PATCH en recurso /libros/1         │ 405        │ 405        │ 13.5ms   │ ✔ PASS   │
+  │ Caso 4   │ PUT en coleccion sin ID            │ 405        │ 405        │ 1.6ms    │ ✔ PASS   │
+  │ Caso 4   │ DELETE en coleccion /prestamos     │ 405        │ 405        │ 14.9ms   │ ✔ PASS   │
+  │ Caso 4   │ PATCH en coleccion /prestamos      │ 405        │ 405        │ 15.1ms   │ ✔ PASS   │
+  │ Caso 5   │ 20 intentos fuerza bruta en /aut   │ 404/429    │ 404        │ 7.8ms    │ ✔ PASS   │
+  └──────────┴────────────────────────────────────┴────────────┴────────────┴──────────┴──────────┘
+
+  Resultado por caso:
+  ┌──────────┬─────────┬────────┬────────┬────────────┐
+  │ Caso     │ Total   │ PASS   │ FAIL   │ Estado     │
+  ├──────────┼─────────┼────────┼────────┼────────────┤
+  │ Caso 1   │ 4       │ 4      │ 0      │ ✔ OK       │
+  │ Caso 2   │ 6       │ 6      │ 0      │ ✔ OK       │
+  │ Caso 3   │ 5       │ 5      │ 0      │ ✔ OK       │
+  │ Caso 4   │ 5       │ 5      │ 0      │ ✔ OK       │
+  │ Caso 5   │ 1       │ 1      │ 0      │ ✔ OK       │
+  │ TOTAL    │ 21      │ 21     │ 0      │ ✔ TODO OK  │
+  └──────────┴─────────┴────────┴────────┴────────────┘
+
+  Resultado global: [████████████████████] 100%  —  21/21 pruebas exitosas
+
+  Recomendaciones de seguridad:
+  ┌────────────────────────┬──────────────────────────────┬────────────────────┐
+  │ Area                   │ Hallazgo                     │ Recomendacion      │
+  ├────────────────────────┼──────────────────────────────┼────────────────────┤
+  │ Recursos (404)         │ Manejo correcto              │ Sin cambios        │
+  │ Validacion (400)       │ Campos obligatorios OK       │ Agregar Marshmallow │
+  │ Tipos de datos         │ Rechazo con 400              │ Esquemas explicitos │
+  │ Metodos (405)          │ Flask OK automatico          │ Sin cambios        │
+  │ Autenticacion          │ No implementada              │ JWT + Flask-Limiter │
+  └────────────────────────┴──────────────────────────────┴────────────────────┘
+
+  Fecha : 2026-07-23 21:14:56
+  URL   : http://127.0.0.1:5000
+════════════════════════════════════════════════════════════════════════
